@@ -42,17 +42,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка OpenAI: {e}")
         await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
 
-# Основная функция
 async def main():
     try:
+        # Инициализация приложения
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         app.add_handler(CommandHandler("start", start))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
         logger.info("Бот запущен")
-        await app.run_polling()
+        
+        # Инициализация приложения
+        await app.initialize()
+        # Запуск polling вручную
+        await app.start()
+        # Запуск polling с явным указанием не закрывать цикл
+        await app.updater.start_polling(
+            poll_interval=0.0,
+            timeout=10,
+            drop_pending_updates=True,  # Игнорировать старые обновления
+            close_loop=False  # Не закрывать цикл событий
+        )
+        
+        # Бесконечный цикл для поддержания работы приложения
+        while True:
+            await asyncio.sleep(3600)  # Спать 1 час, чтобы не нагружать CPU
+        
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         raise
+    finally:
+        # Остановка приложения
+        await app.stop()
+        await app.updater.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Получить существующий цикл событий или создать новый
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    finally:
+        # Не закрываем цикл, так как он управляется Render
+        pass
