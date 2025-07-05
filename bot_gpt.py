@@ -29,22 +29,30 @@ client = AsyncOpenAI(
 
 # /start команда
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот через Together.ai 🤖. Напиши мне что-нибудь.")
+    await update.message.reply_text("Привет! Меня зовут XGPT 👾. Напиши мне что-нибудь.")
 
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     try:
         response = await client.chat.completions.create(
-            model="mistralai/Mixtral-8x7B-Instruct-v0.1",  # Модель от Together.ai
-            messages=[{"role": "user", "content": user_message}]
+            model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Ты — умный, дружелюбный помощник. Всегда отвечай на русском языке."
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ]
         )
         reply = response.choices[0].message.content.strip()
         await update.message.reply_text(reply)
     except Exception as e:
         logger.error(f"Ошибка Together.ai: {e}")
         await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
-
 async def main():
     try:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
