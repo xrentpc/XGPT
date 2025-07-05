@@ -34,17 +34,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
+
     try:
         response = await client.chat.completions.create(
             model="mistralai/Mixtral-8x7B-Instruct-v0.1",
             messages=[
                 {
                     "role": "system",
-                    "content": "Ты — умный, дружелюбный помощник. Всегда отвечай на русском языке."
+                    "content": "Ты — умный, дружелюбный помощник. Всегда отвечай исключительно на русском языке, даже если вопрос задан на английском."
                 },
                 {
                     "role": "user",
-                    "content": user_message
+                    "content": f"Ответь на русском языке на следующее: {user_message}"
                 }
             ]
         )
