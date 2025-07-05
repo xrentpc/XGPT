@@ -3,7 +3,7 @@ import logging
 import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI
+from openai import AsyncOpenAI  # Используем асинхронный клиент OpenAI
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,8 +21,8 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     logger.error("TELEGRAM_TOKEN или OPENAI_API_KEY не заданы")
     raise ValueError("TELEGRAM_TOKEN или OPENAI_API_KEY не заданы")
 
-# Клиент OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Асинхронный клиент OpenAI
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # /start команда
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -32,7 +32,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": user_message}]
         )
@@ -51,16 +51,13 @@ async def main():
         
         logger.info("Бот запущен")
         
-        # Инициализация приложения
+        # Инициализация и запуск приложения
         await app.initialize()
-        # Запуск polling вручную
         await app.start()
-        # Запуск polling с явным указанием не закрывать цикл
         await app.updater.start_polling(
             poll_interval=0.0,
             timeout=10,
-            drop_pending_updates=True,  # Игнорировать старые обновления
-            close_loop=False  # Не закрывать цикл событий
+            drop_pending_updates=True  # Игнорировать старые обновления
         )
         
         # Бесконечный цикл для поддержания работы приложения
@@ -71,15 +68,22 @@ async def main():
         logger.error(f"Ошибка при запуске бота: {e}")
         raise
     finally:
-        # Остановка приложения
-        await app.stop()
-        await app.updater.stop()
+        # Корректная остановка приложения
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception as e:
+            logger.error(f"Ошибка при остановке бота: {e}")
 
 if __name__ == "__main__":
-    # Получить существующий цикл событий или создать новый
-    loop = asyncio.get_event_loop()
+    # Запуск в существующем цикле событий
+    loop = asyncio.new_event_loop()  # Создаём новый цикл
+    asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем")
     finally:
-        # Не закрываем цикл, так как он управляется Render
-        pass
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
