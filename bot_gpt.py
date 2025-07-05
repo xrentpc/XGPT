@@ -3,7 +3,8 @@ import logging
 import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import AsyncOpenAI  # Используем асинхронный клиент OpenAI
+from openai import AsyncOpenAI
+from aiolimiter import AsyncLimiter
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,6 +25,12 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 # Асинхронный клиент OpenAI
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
+# Ограничение запросов: 10 в минуту
+limiter = AsyncLimiter(10, 60)
+
+# Кэш ответов
+response_cache = {}
+
 # /start команда
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я ChatGPT-бот 🤖. Напиши мне что-нибудь.")
@@ -31,16 +38,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_message}]
-        )
-        reply = response.choices[0].message.content.strip()
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logger.error(f"Ошибка OpenAI: {e}")
-        await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
+    if user_message in response_cache:
+        await update.message.reply_text(response_cache[user_message])
+        return
+    async with limiter:
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": user_message}]
+            )
+            reply = response.choices[0].message.content.strip()
+            response_cache[user_message] = reply  # Сохраняем в кэш
+            await update.message.reply_text(reply)
+        except Exception as e:
+            logger.error(f"Ошибка OpenAI: {e}")
+            await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
 
 async def main():
     try:
@@ -57,18 +69,16 @@ async def main():
         await app.updater.start_polling(
             poll_interval=0.0,
             timeout=10,
-            drop_pending_updates=True  # Игнорировать старые обновления
+            drop_pending_updates=True
         )
         
         # Бесконечный цикл для поддержания работы приложения
         while True:
-            await asyncio.sleep(3600)  # Спать 1 час, чтобы не нагружать CPU
-        
+            await asyncio.sleep(3600)  # Спать 1 час
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         raise
     finally:
-        # Корректная остановка приложения
         try:
             await app.updater.stop()
             await app.stop()
@@ -77,8 +87,7 @@ async def main():
             logger.error(f"Ошибка при остановке бота: {e}")
 
 if __name__ == "__main__":
-    # Запуск в существующем цикле событий
-    loop = asyncio.new_event_loop()  # Создаём новый цикл
+    loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(main())
